@@ -63,10 +63,11 @@ function render_footnote_anchor (tokens, idx, options, env, slf) {
   return ` <a href="#fnref${id}" class="footnote-backref">\u21a9\uFE0E</a>`
 }
 
-export default function footnote_plugin (md) {
+export default function footnote_plugin (md, options) {
   const parseLinkLabel = md.helpers.parseLinkLabel
   const isSpace = md.utils.isSpace
 
+  md.options.requireLinks                 = options.requireLinks || true
   md.renderer.rules.footnote_ref          = render_footnote_ref
   md.renderer.rules.footnote_block_open   = render_footnote_block_open
   md.renderer.rules.footnote_block_close  = render_footnote_block_close
@@ -217,7 +218,7 @@ export default function footnote_plugin (md) {
     // should be at least 4 chars - "[^x]"
     if (start + 3 > max) return false
 
-    if (!state.env.footnotes || !state.env.footnotes.refs) return false
+    if (!state.md.options.requireLinks && (!state.env.footnotes || !state.env.footnotes.refs)) return false
     if (state.src.charCodeAt(start) !== 0x5B/* [ */) return false
     if (state.src.charCodeAt(start + 1) !== 0x5E/* ^ */) return false
 
@@ -236,14 +237,18 @@ export default function footnote_plugin (md) {
     pos++
 
     const label = state.src.slice(start + 2, pos - 1)
-    if (typeof state.env.footnotes.refs[`:${label}`] === 'undefined') return false
+    if (state.md.options.requireLinks && !state.env.footnotes) state.env.footnotes = {}
+    if (!state.md.options.requireLinks && typeof state.env.footnotes.refs[`:${label}`] === 'undefined') return false
 
     if (!silent) {
       if (!state.env.footnotes.list) state.env.footnotes.list = []
 
       let footnoteId
 
-      if (state.env.footnotes.refs[`:${label}`] < 0) {
+      if (state.md.options.requireLinks && (!state.env.footnotes.refs || !state.env.footnotes.refs[`:${label}`])) {
+        footnoteId = state.env.footnotes.list.length
+        state.env.footnotes.list[footnoteId] = { label, count: 0 }
+      } else if (state.env.footnotes.refs[`:${label}`] < 0) {
         footnoteId = state.env.footnotes.list.length
         state.env.footnotes.list[footnoteId] = { label, count: 0 }
         state.env.footnotes.refs[`:${label}`] = footnoteId
@@ -292,6 +297,13 @@ export default function footnote_plugin (md) {
 
     if (!state.env.footnotes.list) { return }
     const list = state.env.footnotes.list
+    let list_has_contents = false;
+    for (let i = 0, l = list.length; i < l; i++) {
+      if (list[i].content) {
+        list_has_contents = true;
+      }
+    }
+    if (!list_has_contents) { return }
 
     state.tokens.push(new state.Token('footnote_block_open', '', 1))
 
