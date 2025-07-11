@@ -67,13 +67,17 @@ export default function footnote_plugin (md, options) {
   const parseLinkLabel = md.helpers.parseLinkLabel
   const isSpace = md.utils.isSpace
 
-  md.options.requireLinks                 = options.requireLinks || true
+  md.options.requireLinks                 = options.requireLinks
   md.renderer.rules.footnote_ref          = render_footnote_ref
   md.renderer.rules.footnote_block_open   = render_footnote_block_open
   md.renderer.rules.footnote_block_close  = render_footnote_block_close
   md.renderer.rules.footnote_open         = render_footnote_open
   md.renderer.rules.footnote_close        = render_footnote_close
   md.renderer.rules.footnote_anchor       = render_footnote_anchor
+
+  if (options.requireLinks == undefined) {
+    md.options.requireLinks = true
+  }
 
   // helpers (only used in other rules, no tokens are attached to those)
   md.renderer.rules.footnote_caption      = render_footnote_caption
@@ -218,7 +222,7 @@ export default function footnote_plugin (md, options) {
     // should be at least 4 chars - "[^x]"
     if (start + 3 > max) return false
 
-    if (!state.md.options.requireLinks && (!state.env.footnotes || !state.env.footnotes.refs)) return false
+    if (state.md.options.requireLinks && (!state.env.footnotes || !state.env.footnotes.refs)) return false
     if (state.src.charCodeAt(start) !== 0x5B/* [ */) return false
     if (state.src.charCodeAt(start + 1) !== 0x5E/* ^ */) return false
 
@@ -237,30 +241,33 @@ export default function footnote_plugin (md, options) {
     pos++
 
     const label = state.src.slice(start + 2, pos - 1)
-    if (state.md.options.requireLinks && !state.env.footnotes) state.env.footnotes = {}
-    if (!state.md.options.requireLinks && typeof state.env.footnotes.refs[`:${label}`] === 'undefined') return false
+    if (!state.md.options.requireLinks && !state.env.footnotes) state.env.footnotes = {}
+    if (state.md.options.requireLinks && typeof state.env.footnotes.refs[`:${label}`] === 'undefined') return false
 
     if (!silent) {
       if (!state.env.footnotes.list) state.env.footnotes.list = []
 
       let footnoteId
 
-      if (state.md.options.requireLinks && (!state.env.footnotes.refs || !state.env.footnotes.refs[`:${label}`])) {
-        footnoteId = state.env.footnotes.list.length
-        state.env.footnotes.list[footnoteId] = { label, count: 0 }
-      } else if (state.env.footnotes.refs[`:${label}`] < 0) {
-        footnoteId = state.env.footnotes.list.length
-        state.env.footnotes.list[footnoteId] = { label, count: 0 }
-        state.env.footnotes.refs[`:${label}`] = footnoteId
-      } else {
-        footnoteId = state.env.footnotes.refs[`:${label}`]
-      }
-
-      const footnoteSubId = state.env.footnotes.list[footnoteId].count
-      state.env.footnotes.list[footnoteId].count++
-
       const token = state.push('footnote_ref', '', 0)
-      token.meta = { id: footnoteId, subId: footnoteSubId, label }
+
+      if (!state.md.options.requireLinks && (!state.env.footnotes.refs || !state.env.footnotes.refs[`:${label}`])) {
+        footnoteId = state.env.footnotes.list.length
+        state.env.footnotes.list[footnoteId] = { label, count: 0 }
+        token.meta = { id: footnoteId, label }
+      } else {
+        if (state.env.footnotes.refs[`:${label}`] < 0) {
+          footnoteId = state.env.footnotes.list.length
+          state.env.footnotes.list[footnoteId] = { label, count: 0 }
+          state.env.footnotes.refs[`:${label}`] = footnoteId
+        } else {
+          footnoteId = state.env.footnotes.refs[`:${label}`]
+        }
+
+        const footnoteSubId = state.env.footnotes.list[footnoteId].count
+        state.env.footnotes.list[footnoteId].count++
+        token.meta = { id: footnoteId, subId: footnoteSubId, label }
+      }
     }
 
     state.pos = pos
@@ -299,7 +306,7 @@ export default function footnote_plugin (md, options) {
     const list = state.env.footnotes.list
     let list_has_contents = false;
     for (let i = 0, l = list.length; i < l; i++) {
-      if (list[i].content) {
+      if (list[i].count > 0) {
         list_has_contents = true;
       }
     }
